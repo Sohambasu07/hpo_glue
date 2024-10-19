@@ -170,6 +170,8 @@ def _run_problem_with_trial_budget(  # noqa: C901, PLR0912
                         for res in history:
                             if Conf(res.config.to_tuple(run.problem.precision), res.fidelity[1]) == config:  # noqa: E501
                                 result = res
+                                if query.config_id == result.query.config_id:
+                                    raise ValueError("Resampled configuration has same config_id in history!")
                                 result.query = query
                     else:
                         result = benchmark.query(query)
