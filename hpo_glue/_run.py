@@ -156,30 +156,36 @@ def _run_problem_with_trial_budget(  # noqa: C901, PLR0912
             while used_budget < budget_total:
                 try:
                     query = optimizer.ask()
-                    config = Conf(query.config.to_tuple(run.problem.precision), query.fidelity[1])
 
-                    resample_flag = False
-                    flag = runhist.add_conf(
-                        config=config,
-                        fid_type=run.problem.fidelity[0] #TODO: Raise Manyfidelity NotImplementedError
-                    )
-                    if flag == 1:
-                        resample_flag = True
-
-                    if resample_flag: # NOTE: Not a cheap operation since we don't store the costs in the continuations dict
-                        for res in history:
-                            if Conf(res.config.to_tuple(run.problem.precision), res.fidelity[1]) == config:  # noqa: E501
-                                result = res
-                                if query.config_id == result.query.config_id:
-                                    raise ValueError("Resampled configuration has same config_id in history!")
-                                result.query = query
-                    else:
+                    #TODO: Temporary fix for problems without fidelities
+                    if run.problem.fidelity is None:
                         result = benchmark.query(query)
-                        if run.continuations:
-                            result.continuations_cost = runhist.get_continuations_cost(
-                                config=config,
-                                fid_type=run.problem.fidelity[0]
-                            )
+
+                    else:
+                        config = Conf(query.config.to_tuple(run.problem.precision), query.fidelity[1])
+
+                        resample_flag = False
+                        flag = runhist.add_conf(
+                            config=config,
+                            fid_type=run.problem.fidelity[0] #TODO: Raise Manyfidelity NotImplementedError
+                        )
+                        if flag == 1:
+                            resample_flag = True
+
+                        if resample_flag: # NOTE: Not a cheap operation since we don't store the costs in the continuations dict
+                            for res in history:
+                                if Conf(res.config.to_tuple(run.problem.precision), res.fidelity[1]) == config:  # noqa: E501
+                                    result = res
+                                    if query.config_id == result.query.config_id:
+                                        raise ValueError("Resampled configuration has same config_id in history!")
+                                    result.query = query
+                        else:
+                            result = benchmark.query(query)
+                            if run.continuations:
+                                result.continuations_cost = runhist.get_continuations_cost(
+                                    config=config,
+                                    fid_type=run.problem.fidelity[0]
+                                )
 
                     budget_cost = _trial_budget_cost(
                         value=result.fidelity,
