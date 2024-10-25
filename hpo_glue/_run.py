@@ -126,7 +126,7 @@ def _run(
     return report
 
 
-def _run_problem_with_trial_budget(  # noqa: C901, PLR0912
+def _run_problem_with_trial_budget(  # noqa: C901, PLR0912, PLR0915
     *,
     run: Run,
     optimizer: Optimizer,
@@ -162,22 +162,34 @@ def _run_problem_with_trial_budget(  # noqa: C901, PLR0912
                         result = benchmark.query(query)
 
                     else:
-                        config = Conf(query.config.to_tuple(run.problem.precision), query.fidelity[1])
+                        config = Conf(
+                            query.config.to_tuple(run.problem.precision),
+                            query.fidelity[1]
+                        )
 
                         resample_flag = False
                         flag = runhist.add_conf(
                             config=config,
-                            fid_type=run.problem.fidelity[0] #TODO: Raise Manyfidelity NotImplementedError
+                            fid_type=run.problem.fidelity[0]
+                            #TODO: Raise Manyfidelity NotImplementedError
                         )
                         if flag == 1:
                             resample_flag = True
 
-                        if resample_flag: # NOTE: Not a cheap operation since we don't store the costs in the continuations dict
+                        if resample_flag:
+                        # NOTE: Not a cheap operation since we don't store the costs
+                        # in the continuations dict
                             for res in history:
-                                if Conf(res.config.to_tuple(run.problem.precision), res.fidelity[1]) == config:  # noqa: E501
+                                if (
+                                    Conf(
+                                        res.config.to_tuple(run.problem.precision),
+                                        res.fidelity[1]) == config
+                                    ):
                                     result = res
                                     if query.config_id == result.query.config_id:
-                                        raise ValueError("Resampled configuration has same config_id in history!")
+                                        raise ValueError(
+                                            "Resampled configuration has same config_id in history!"
+                                        )
                                     result.query = query
                         else:
                             result = benchmark.query(query)
