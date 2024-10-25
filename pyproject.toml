@@ -7,7 +7,8 @@ dependencies = [
   "tqdm", 
   "more_itertools",
   "pyyaml",
-  "ConfigSpace"
+  "ConfigSpace",
+  "pyarrow"
   ]
 authors = [
   { name = "Soham Basu", email = "soham.basu07@gmail.com" },
@@ -35,7 +36,7 @@ license = { file = "LICENSE" }
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["hpo_glue"]
-exclude = ["benchmarks", "optimizers", "plotting"]
+exclude = ["lib", "tests"]
 namespaces = false
 
 [project.optional-dependencies]
