@@ -16,18 +16,18 @@ if TYPE_CHECKING:
 
     from hpo_glue.query import Query
 
-def ackley_desc() -> Iterator[BenchmarkDescription]:
+def branin_desc() -> Iterator[BenchmarkDescription]:
 
     env = Env(
-        name="ackley",
+        name="branin",
         python_version="3.10",
         requirements=(),
         post_install=(),
     )
-    name = "ackley"
+    name = "branin"
     yield BenchmarkDescription(
         name=name,
-        load=partial(_ackley_surrogate),
+        load=partial(_branin_surrogate),
         costs=None,
         fidelities=None,
         metrics={
@@ -40,30 +40,32 @@ def ackley_desc() -> Iterator[BenchmarkDescription]:
     )
 
 
-def _ackley_surrogate(
+def _branin_surrogate(
     description: BenchmarkDescription
 ) -> SurrogateBenchmark:
-    ackley_space = ConfigurationSpace()
+    branin_space = ConfigurationSpace()
     for i in range(2):
-        ackley_space.add(Float(name=f"x{i}", bounds=[-32.768, 32.768]))
+        branin_space.add(Float(name=f"x{i}", bounds=[-32.768, 32.768]))
     return SurrogateBenchmark(
         desc=description,
-        benchmark=ackley,
-        config_space=ackley_space,
-        query=partial(ackley),
+        benchmark=branin,
+        config_space=branin_space,
+        query=partial(branin),
     )
 
 
-def ackley(query: Query) -> Result:
+def branin(query: Query) -> Result:
 
-    n_var=2
-    a=20
-    b=1/5
-    c=2 * np.pi
     x = np.array(query.config.to_tuple())
-    part1 = -1. * a * np.exp(-1. * b * np.sqrt((1. / n_var) * np.sum(x * x)))
-    part2 = -1. * np.exp((1. / n_var) * np.sum(np.cos(c * x)))
-    out = part1 + part2 + a + np.exp(1)
+    x1 = x[0]
+    x2 = x[1]
+    a = 1.0
+    b = 5.1 / (4.0 * np.pi**2)
+    c = 5.0 / np.pi
+    r = 6.0
+    s = 10.0
+    t = 1.0 / (8.0 * np.pi)
+    out = a * (x2 - b * x1**2 + c * x1 - r) ** 2 + s * (1 - t) * np.cos(x1) + s
 
     return Result(
         query=query,
