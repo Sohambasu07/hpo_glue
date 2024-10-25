@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 def main(
-    list: bool
+    list: bool = False
 ):
     if list:
         logger.info("Available benchmarks:")
