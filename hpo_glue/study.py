@@ -10,14 +10,14 @@ from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 import numpy as np
 
 from hpo_glue.benchmark import BenchmarkDescription
-from hpo_glue.benchmarks import BENCHMARKS
 from hpo_glue.constants import DEFAULT_RELATIVE_EXP_DIR
 from hpo_glue.env import (
     GLUE_PYPI,
     get_current_installed_hpo_glue_version,
 )
+from hpo_glue.lib.benchmarks import BENCHMARKS
+from hpo_glue.lib.optimizers import OPTIMIZERS
 from hpo_glue.optimizer import Optimizer
-from hpo_glue.optimizers import OPTIMIZERS
 
 if TYPE_CHECKING:
     from hpo_glue.budget import BudgetType
@@ -240,69 +240,8 @@ class Study:
             case _:
                 raise ValueError(f"Invalid value for `how`: {how}")
 
-    def _group_by(
-        self,
-        group_by: Literal["opt", "bench", "opt_bench", "seed", "mem"] | None,
-    ) -> Mapping[str, list[Run]]:
-        """Group the runs by the specified group."""
-        if group_by is None:
-            return {"all": self.experiments}
 
-        _grouped_runs = {}
-        for run in self.experiments:
-            key = ""
-            match group_by:
-                case "opt":
-                    key = run.optimizer.name
-                case "bench":
-                    key = run.benchmark.name
-                case "opt_bench":
-                    key = f"{run.optimizer.name}_{run.benchmark.name}"
-                case "seed":
-                    key = str(run.seed)
-                case "mem":
-                    key = f"{run.mem_req_MB}MB"
-                case _:
-                    raise ValueError(f"Invalid group_by: {group_by}")
-
-            if key not in _grouped_runs:
-                _grouped_runs[key] = []
-            _grouped_runs[key].append(run)
-
-        return _grouped_runs
-
-    def _dump_runs(
-        self,
-        group_by: Literal["opt", "bench", "opt_bench", "seed", "mem"] | None,
-        exp_dir: Path,
-        *,
-        overwrite: bool = False,
-        precision: int | None = None,
-    ) -> None:
-        """Dump the grouped runs into separate files."""
-        grouped_runs = self._group_by(group_by)
-        for key, runs in grouped_runs.items():
-            with (exp_dir / f"dump_{key}.txt").open("w") as f:
-                for run in runs:
-                    f.write(
-                        f"python -m hpo_glue"
-                        # f"--exp_name {self.name}"
-                        f" --optimizers {run.optimizer.name}"
-                        f" --benchmarks {run.benchmark.name}"
-                        f" --seeds {run.seed}"
-                        f" --budget {run.problem.budget.total}"
-                    )
-                    if overwrite:
-                        f.write(" --overwrite")
-                    if run.continuations:
-                        f.write(" --continuations")
-                    if precision:
-                        f.write(f" --precision {precision}")
-                    f.write("\n")
-            logger.info(f"Dumped experiments to {exp_dir / f'dump_{key}.txt'}")
-
-
-    def optimize(  # noqa: C901, PLR0912
+    def optimize(
         self,
         optimizers: (
             str
@@ -320,8 +259,6 @@ class Study:
         num_seeds: int = 1,
         budget: int = 50,
         precision: int | None = None,
-        exec_type: Literal["sequential", "parallel", "dump"] = "sequential",
-        group_by: Literal["opt", "bench", "opt_bench", "seed", "mem"] | None = None,
         overwrite: bool = False,
         continuations: bool = False,
         on_error: Literal["warn", "raise", "ignore"] = "warn",
@@ -346,15 +283,11 @@ class Study:
 
             precision: The precision of the optimization run(s).
 
-            expdir: The directory to store experiment results.
-
-            exec_type: The type of execution to use.
-            Supported types are "sequential", "parallel" and "dump".
-
-            group_by: The grouping to use for the runs dump.
-            Supported types are "opt", "bench", "opt_bench", "seed", and "mem"
-            Only used when `exec_type` is "dump" for multiple runs.
-
+            on_error: The method to handle errors.
+            Available options are:
+                * "warn": Log a warning and continue.
+                * "raise": Raise an error.
+                * "ignore": Ignore the error and continue.
         """
         if not isinstance(optimizers, list):
             optimizers = [optimizers]
@@ -391,46 +324,12 @@ class Study:
             budget=budget,
             seeds=seeds,
             num_seeds=num_seeds,
-            fidelities=1,
-            objectives=1,
             on_error=on_error,
             precision=precision,
             continuations=continuations
         )
         for run in self.experiments:
             run.write_yaml()
-
-        _multirun = False
-
-        if (
-            len(_optimizers) > 1 or
-            len(_benchmarks) > 1 or
-            (seeds is not None and len(seeds) > 1) or
-            num_seeds > 1
-        ):
-            match exec_type:
-                case "sequential":
-                    logger.info("Running experiments sequentially")
-                    for run in self.experiments:
-                        run.create_env(hpo_glue=f"-e {Path.cwd()}")
-                        run.run(
-                            overwrite=overwrite,
-                            progress_bar=False,
-                        )
-                case "parallel":
-                    raise NotImplementedError("Parallel execution not implemented yet!")
-                case "dump":
-                    logger.info("Dumping experiments")
-                    self._dump_runs(
-                        group_by=group_by,
-                        exp_dir=exp_dir,
-                        overwrite=overwrite,
-                        precision=precision,
-                    )
-                case _:
-                    raise ValueError(f"Invalid exceution type: {exec_type}")
-        else:
-            run = self.experiments[0]
             run.create_env(hpo_glue=f"-e {Path.cwd()}")
             run.run(
                 overwrite=overwrite,
