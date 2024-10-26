@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import traceback
 import warnings
 from collections.abc import Mapping
 from contextlib import nullcontext
@@ -10,11 +9,11 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+import pandas as pd
 from tqdm import TqdmWarning, tqdm
 
 from hpo_glue.budget import CostBudget, TrialBudget
 from hpo_glue.fidelity import Fidelity
-from hpo_glue.run import Run
 from hpo_glue.utils import rescale
 
 if TYPE_CHECKING:
@@ -85,63 +84,68 @@ class Runtime_hist:
 
 
 def _run(
-    run: Run,
+    run_name: str,
+    optimizer: Optimizer,
+    optimizer_hyperparameters: dict[str, int | float],
+    problem: Problem,
+    seed: int,
     *,
     on_error: Literal["raise", "continue"] = "raise",
     progress_bar: bool = False,
-) -> Run.Report:
-    run.set_state(run.State.RUNNING)
-    benchmark = run.benchmark.load(run.benchmark)
-    opt = run.optimizer(
-        problem=run.problem,
+    continuations: bool = False
+) -> pd.DataFrame:
+    benchmark = problem.benchmark.load(problem.benchmark)
+    opt = optimizer(
+        problem=problem,
         working_directory=Path("./Optimizers_cache"),
-        seed=run.seed,
+        seed=seed,
         config_space=benchmark.config_space,
-        **run.optimizer_hyperparameters,
+        **optimizer_hyperparameters,
     )
 
-    match run.problem.budget:
+    match problem.budget:
         case TrialBudget(
             total=budget_total,
             minimum_fidelity_normalized_value=minimum_normalized_fidelity,
         ):
-            report = _run_problem_with_trial_budget(
-                run=run,
-                benchmark=benchmark,
+            result_df = _run_problem_with_trial_budget(
+                run_name=run_name,
                 optimizer=opt,
+                benchmark=benchmark,
+                problem=problem,
                 budget_total=budget_total,
                 on_error=on_error,
                 minimum_normalized_fidelity=minimum_normalized_fidelity,
                 progress_bar=progress_bar,
+                continuations=continuations,
             )
         case CostBudget():
             raise NotImplementedError("CostBudget not yet implemented")
         case _:
-            raise RuntimeError(f"Invalid budget type: {run.problem.budget}")
+            raise RuntimeError(f"Invalid budget type: {problem.budget}")
 
-    logger.info(f"COMPLETED running {run.name}")
-    logger.info(f"Saving {run.name} at {run.working_dir}")
-    logger.info(f"Results dumped at {run.df_path.absolute()}")
-    run.set_state(Run.State.COMPLETE, df=report.df())
-    return report
+    logger.info(f"COMPLETED running {run_name}")
+    return result_df
 
 
 def _run_problem_with_trial_budget(  # noqa: C901, PLR0912, PLR0915
     *,
-    run: Run,
+    run_name: str,
     optimizer: Optimizer,
     benchmark: Benchmark,
+    problem: Problem,
     budget_total: int,
     on_error: Literal["raise", "continue"],
     minimum_normalized_fidelity: float,
     progress_bar: bool,
-) -> Run.Report:
+    continuations: bool = False,
+) -> pd.DataFrame:
     used_budget: float = 0.0
 
     history: list[Result] = []
 
     if progress_bar:
-        ctx = partial(tqdm, desc=f"{run.name}", total=run.problem.budget.total)
+        ctx = partial(tqdm, desc=f"{run_name}", total=budget_total)
     else:
         ctx = partial(nullcontext, None)
 
@@ -150,27 +154,25 @@ def _run_problem_with_trial_budget(  # noqa: C901, PLR0912, PLR0915
         warnings.simplefilter("ignore", category=TqdmWarning)
         runhist = Runtime_hist()
 
-        tuple_configs: dict[tuple, dict[str, list[int | float]]]
-
         with ctx() as pbar:
             while used_budget < budget_total:
                 try:
                     query = optimizer.ask()
 
                     #TODO: Temporary fix for problems without fidelities
-                    if run.problem.fidelity is None:
+                    if problem.fidelity is None:
                         result = benchmark.query(query)
 
                     else:
                         config = Conf(
-                            query.config.to_tuple(run.problem.precision),
+                            query.config.to_tuple(problem.precision),
                             query.fidelity[1]
                         )
 
                         resample_flag = False
                         flag = runhist.add_conf(
                             config=config,
-                            fid_type=run.problem.fidelity[0]
+                            fid_type=problem.fidelity[0]
                             #TODO: Raise Manyfidelity NotImplementedError
                         )
                         if flag == 1:
@@ -182,7 +184,7 @@ def _run_problem_with_trial_budget(  # noqa: C901, PLR0912, PLR0915
                             for res in history:
                                 if (
                                     Conf(
-                                        res.config.to_tuple(run.problem.precision),
+                                        res.config.to_tuple(problem.precision),
                                         res.fidelity[1]) == config
                                     ):
                                     result = res
@@ -193,15 +195,15 @@ def _run_problem_with_trial_budget(  # noqa: C901, PLR0912, PLR0915
                                     result.query = query
                         else:
                             result = benchmark.query(query)
-                            if run.continuations:
+                            if continuations:
                                 result.continuations_cost = runhist.get_continuations_cost(
                                     config=config,
-                                    fid_type=run.problem.fidelity[0]
+                                    fid_type=problem.fidelity[0]
                                 )
 
                     budget_cost = _trial_budget_cost(
                         value=result.fidelity,
-                        problem=run.problem,
+                        problem=problem,
                         minimum_normalized_fidelity=minimum_normalized_fidelity,
                     )
 
@@ -213,11 +215,9 @@ def _run_problem_with_trial_budget(  # noqa: C901, PLR0912, PLR0915
                     history.append(result)
                     if pbar is not None:
                         pbar.update(budget_cost)
-                    tuple_configs = runhist.get_conf_dict()
                 except Exception as e:
-                    run.set_state(Run.State.CRASHED, err_tb=(e, traceback.format_exc()))
                     logger.exception(e)
-                    logger.error(f"Error running {run.name}: {e}")
+                    logger.error(f"Error running {run_name}: {e}")
                     match on_error:
                         case "raise":
                             raise e
@@ -225,7 +225,7 @@ def _run_problem_with_trial_budget(  # noqa: C901, PLR0912, PLR0915
                             raise NotImplementedError("Continue not yet implemented!") from e
                         case _:
                             raise RuntimeError(f"Invalid value for `on_error`: {on_error}") from e
-    return Run.Report(run=run, results=history, tuple_configs_dict=tuple_configs)
+    return pd.DataFrame([res.to_dict() for res in history])
 
 
 def _trial_budget_cost(
