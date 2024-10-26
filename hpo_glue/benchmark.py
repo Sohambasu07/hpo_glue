@@ -515,6 +515,91 @@ class TabularBenchmark:
         return self.table[self.result_keys].loc[query.config_id, frm:to].droplevel(0).sort_index()
 
 
+class FunctionalBenchmark:
+    """Defines the interface for a functional benchmark."""
+
+    desc: BenchmarkDescription
+    """The description of the functional benchmark."""
+
+    query: Callable[[Query], Result]
+    """The query function for the benchmark."""
+
+    config_space: ConfigurationSpace | list[Config] | None = None
+    """The configuration space for the benchmark."""
+
+    trajectory_f: TrajectoryF | None = None
+    """The trajectory function for the benchmark, if one exists.
+
+    This function should return a DataFrame with the trajectory of the query up
+    to the given fidelity. The index should be the fidelity parameter with the
+    columns as the values.
+
+    ```
+    def __call__(
+        self,
+        *,
+        query: Query,
+        frm: int | float | None = None,
+        to: int | float | None = None,
+    ) -> pd.DataFrame:
+        ...
+    ```
+
+    If not provided, the query will be called repeatedly to generate this.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        load: Callable[[BenchmarkDescription], Benchmark],
+        metrics: Mapping[str, Measure],
+        query: Callable[[Query], Result],
+        fidelities: Mapping[str, Fidelity] | None = None,
+        costs: Mapping[str, Measure] | None = None,
+        test_metrics: Mapping[str, Measure] | None = None,
+        config_space: ConfigurationSpace | list[Config] | None = None,
+    ):
+        """Create a functional benchmark.
+
+        Args:
+            name: The name of the benchmark.
+            load: Function to load the benchmark.
+            metrics: The metrics that the benchmark supports.
+            query: The query function for the benchmark.
+            fidelities: The fidelities that the benchmark supports.
+            costs: The costs that the benchmark supports.
+            test_metrics: The test metrics that the benchmark supports.
+            config_space: The configuration space for the benchmark.
+        """
+        self.desc = BenchmarkDescription(
+            name=name,
+            load=load,
+            metrics=metrics,
+            test_metrics=test_metrics,
+            costs=costs,
+            fidelities=fidelities,
+            has_conditionals=False,
+            is_tabular=False,
+            env=Env.empty,
+            mem_req_MB=100,
+        )
+        self.query = query
+        self.config_space = config_space
+
+
+    def trajectory(
+        self,
+        *,
+        query: Query,
+        frm: int | float | None = None,
+        to: int | float | None = None,
+    ) -> pd.DataFrame:
+        if self.trajectory_f is not None:
+            return self.trajectory_f(query=query, frm=frm, to=to)
+
+        raise NotImplementedError("Trajectory not implemented for this benchmark.")
+
+
 # NOTE(eddiebergman): Not using a base class as we really don't expect to need
 # more than just these two types of benchmarks.
-Benchmark: TypeAlias = TabularBenchmark | SurrogateBenchmark
+Benchmark: TypeAlias = TabularBenchmark | SurrogateBenchmark | FunctionalBenchmark
