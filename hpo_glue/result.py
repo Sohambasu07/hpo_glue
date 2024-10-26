@@ -52,3 +52,12 @@ class Result:
     def config(self) -> Config:
         """The config."""
         return self.query.config
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert the result to a dictionary."""
+        members = [
+            attr for attr in dir(self)
+            if not callable(getattr(self, attr)) and not attr.startswith("__")
+        ]
+
+        return {attr: getattr(self, attr) for attr in members}
