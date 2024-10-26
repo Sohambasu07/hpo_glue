@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from hpo_glue.lib.benchmarks.ackley import ackley_desc
-from hpo_glue.lib.benchmarks.branin import branin_desc
+from lib.benchmarks.ackley import ackley_desc
+from lib.benchmarks.branin import branin_desc
 
 if TYPE_CHECKING:
     from hpo_glue.benchmark import BenchmarkDescription
