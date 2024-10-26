@@ -6,9 +6,7 @@ dependencies = [
   "pandas>=2,<3",
   "tqdm", 
   "more_itertools",
-  "pyyaml",
   "ConfigSpace",
-  "pyarrow"
   ]
 authors = [
   { name = "Soham Basu", email = "soham.basu07@gmail.com" },
@@ -41,6 +39,7 @@ namespaces = false
 
 [project.optional-dependencies]
 dev = ["ruff", "mypy", "pre-commit"]
+extra = ["ipykernel"]
 
 [project.urls]
 source = "https://github.com/Sohambasu07/HPO_Suite/hpo_suite/hpo_glue/"
@@ -152,13 +151,14 @@ exclude = [
   "dist",
   "node_modules",
   "venv",
-  "docs",
+  "docs"
 ]
 
 # Exclude a variety of commonly ignored directories.
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["I002"]
 "docs/*" = ["INP001"]
+"*.ipynb" = ["E501", "I002", "T201"]
 
 
 [tool.ruff.lint.isort]
