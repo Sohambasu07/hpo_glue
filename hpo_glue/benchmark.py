@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, TypeVar
 
 import pandas as pd
@@ -551,13 +552,14 @@ class FunctionalBenchmark:
     def __init__(
         self,
         name: str,
-        load: Callable[[BenchmarkDescription], Benchmark],
         metrics: Mapping[str, Measure],
         query: Callable[[Query], Result],
         fidelities: Mapping[str, Fidelity] | None = None,
         costs: Mapping[str, Measure] | None = None,
         test_metrics: Mapping[str, Measure] | None = None,
         config_space: ConfigurationSpace | list[Config] | None = None,
+        env: Env = Env.empty,
+        mem_req_MB: int = 100,
     ):
         """Create a functional benchmark.
 
@@ -571,20 +573,32 @@ class FunctionalBenchmark:
             test_metrics: The test metrics that the benchmark supports.
             config_space: The configuration space for the benchmark.
         """
+        self.query = query
+        self.config_space = config_space
         self.desc = BenchmarkDescription(
             name=name,
-            load=load,
+            load=partial(self.load),
             metrics=metrics,
             test_metrics=test_metrics,
             costs=costs,
             fidelities=fidelities,
             has_conditionals=False,
             is_tabular=False,
-            env=Env.empty,
-            mem_req_MB=100,
+            env=env,
+            mem_req_MB=mem_req_MB,
         )
-        self.query = query
-        self.config_space = config_space
+
+    @property
+    def description(self) -> BenchmarkDescription:
+        return self.desc
+
+
+    def load(
+        self,
+        desc: BenchmarkDescription,  # noqa: ARG002
+    ) -> FunctionalBenchmark:
+        return self
+
 
 
     def trajectory(
