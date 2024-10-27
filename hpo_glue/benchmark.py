@@ -84,8 +84,8 @@ class BenchmarkDescription:
     env: Env = field(default_factory=Env.empty)
     """The environment needed to run this benchmark."""
 
-    mem_req_MB: int
-    """The memory requirement of the benchmark in MB."""
+    mem_req_mb: int
+    """The memory requirement of the benchmark in mb."""
 
     def problem(  # noqa: C901, PLR0912
         self,
@@ -559,19 +559,20 @@ class FunctionalBenchmark:
         test_metrics: Mapping[str, Measure] | None = None,
         config_space: ConfigurationSpace | list[Config] | None = None,
         env: Env = Env.empty,
-        mem_req_MB: int = 100,
+        mem_req_mb: int = 100,
     ):
         """Create a functional benchmark.
 
         Args:
             name: The name of the benchmark.
-            load: Function to load the benchmark.
             metrics: The metrics that the benchmark supports.
             query: The query function for the benchmark.
             fidelities: The fidelities that the benchmark supports.
             costs: The costs that the benchmark supports.
             test_metrics: The test metrics that the benchmark supports.
             config_space: The configuration space for the benchmark.
+            env: The environment needed to run this benchmark.
+            mem_req_mb: The memory requirement of the benchmark in mb.
         """
         self.query = query
         self.config_space = config_space
@@ -585,7 +586,7 @@ class FunctionalBenchmark:
             has_conditionals=False,
             is_tabular=False,
             env=env,
-            mem_req_MB=mem_req_MB,
+            mem_req_mb=mem_req_mb,
         )
 
     @property

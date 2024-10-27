@@ -31,7 +31,7 @@ class RandomSearch(Optimizer):
         tabular=False,
     )
 
-    mem_req_MB = 100  # noqa: N815
+    mem_req_mb = 100  # noqa: N815
 
     def __init__(
         self,

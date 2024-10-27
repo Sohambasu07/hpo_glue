@@ -36,7 +36,7 @@ def ackley_desc() -> Iterator[BenchmarkDescription]:
         has_conditionals=False,
         is_tabular=False,
         env=env,
-        mem_req_MB = 100,
+        mem_req_mb = 100,
     )
 
 
