@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 
 WHEN_MODULE_INITIALIZED = datetime.now().isoformat()
 
-GLUE_REPO = "github.com/Sohambasu07/HPO_Suite.git"
-GLUE_PYPI = "HPO_Suite"
-GLUE_GIT_SSH_INSTALL = "git+ssh://git@github.com/Sohambasu07/HPO_Suite.git"
+GLUE_REPO = "github.com/Sohambasu07/hpo_glue.git"
+GLUE_PYPI = "hpo_glue"
+GLUE_GIT_SSH_INSTALL = "git+ssh://git@github.com/Sohambasu07/hpo_glue.git"
 
 
 @dataclass(frozen=True)

@@ -42,7 +42,7 @@ dev = ["ruff", "mypy", "pre-commit"]
 extra = ["ipykernel"]
 
 [project.urls]
-source = "https://github.com/Sohambasu07/HPO_Suite/hpo_suite/hpo_glue/"
+source = "https://github.com/Sohambasu07/hpo_glue/"
 
 [tool.ruff]
 target-version = "py310"
