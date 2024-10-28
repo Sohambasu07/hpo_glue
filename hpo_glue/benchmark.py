@@ -4,22 +4,18 @@ import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from functools import partial
-from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, TypeVar
+from typing import TYPE_CHECKING, Any, Protocol, TypeAlias
 
 import pandas as pd
-from more_itertools import roundrobin, take
 
-from hpo_glue.budget import CostBudget, TrialBudget
 from hpo_glue.config import Config
 from hpo_glue.env import Env
 from hpo_glue.optimizer import Optimizer
-from hpo_glue.problem import Problem
 from hpo_glue.result import Result
 
 if TYPE_CHECKING:
     from ConfigSpace import ConfigurationSpace
 
-    from hpo_glue.budget import BudgetType
     from hpo_glue.fidelity import Fidelity
     from hpo_glue.measure import Measure
     from hpo_glue.query import Query
@@ -37,20 +33,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 OptWithHps: TypeAlias = tuple[type[Optimizer], Mapping[str, Any]]
-
-T = TypeVar("T")
-
-
-def first(_d: Mapping[str, T]) -> tuple[str, T]:
-    return next(iter(_d.items()))
-
-
-def first_n(n: int, _d: Mapping[str, T]) -> dict[str, T]:
-    return dict(take(n, _d.items()))
-
-
-def mix_n(n: int, _d1: Mapping[str, T], _d2: Mapping[str, T]) -> dict[str, T]:
-    return dict(take(n, roundrobin(_d1.items(), _d2.items())))
 
 
 @dataclass(kw_only=True, frozen=True)
@@ -86,134 +68,6 @@ class BenchmarkDescription:
 
     mem_req_mb: int
     """The memory requirement of the benchmark in mb."""
-
-    def problem(  # noqa: C901, PLR0912
-        self,
-        budget: BudgetType | int,
-        fidelities: int = 0,
-        objectives: int = 1,
-        costs: int = 0,
-        multi_objective_generation: Literal["mix_metric_cost", "metric_only"] = "mix_metric_cost",
-        precision: int | None = None
-    ) -> Problem:
-        """Generate a problem for thie benchmark.
-
-        Args:
-            budget: The budget to use for the problems. Budget defaults to a n_trials budget
-                where when multifidelty is enabled, fractional budget can be used and 1 is
-                equivalent a full fidelity trial.
-            fidelities: The number of fidelities for the problem.
-            objectives: The number of objectives for the problem.
-            costs: The number of costs for the problem.
-            multi_objective_generation: The method to generate multiple objectives.
-        """
-        _fid: tuple[str, Fidelity] | Mapping[str, Fidelity] | None
-        match fidelities:
-            case int() if fidelities < 0:
-                raise ValueError(f"{fidelities=} must be >= 0")
-            case 0:
-                _fid = None
-            case 1:
-                if self.fidelities is None:
-                    raise ValueError(
-                        f"Benchmark {self.name} has no fidelities but {fidelities=} was requested",
-                    )
-                _fid = first(self.fidelities)
-            case int():
-                if self.fidelities is None:
-                    raise ValueError(
-                        f"Benchmark {self.name} has no fidelities but {fidelities=} was requested",
-                    )
-
-                if fidelities > len(self.fidelities):
-                    raise ValueError(
-                        f"{fidelities=} is greater than the number of fidelities"
-                        f" in benchmark {self.name} which has {len(self.fidelities)} fidelities",
-                    )
-
-                _fid = first_n(fidelities, self.fidelities)
-            case _:
-                raise TypeError(f"{fidelities=} not supported")
-
-        _obj: tuple[str, Measure] | Mapping[str, Measure]
-        match objectives, multi_objective_generation:
-            # single objective
-            case int(), _ if objectives < 0:
-                raise ValueError(f"{objectives=} must be >= 0")
-            case _, str() if multi_objective_generation not in {"mix_metric_cost", "metric_only"}:
-                raise ValueError(
-                    f"{multi_objective_generation=} not supported, must be one"
-                    " of 'mix_metric_cost', 'metric_only'",
-                )
-            case 1, _:
-                _obj = first(self.metrics)
-            case _, "metric_only":
-                if objectives > len(self.metrics):
-                    raise ValueError(
-                        f"{objectives=} is greater than the number of metrics"
-                        f" in benchmark {self.name} which has {len(self.metrics)} metrics",
-                    )
-                _obj = first_n(objectives, self.metrics)
-            case _, "mix_metric_cost":
-                n_costs = 0 if self.costs is None else len(self.costs)
-                n_available = len(self.metrics) + n_costs
-                if objectives > n_available:
-                    raise ValueError(
-                        f"{objectives=} is greater than the number of metrics and costs"
-                        f" in benchmark {self.name} which has {n_available} objectives"
-                        " when combining metrics and costs",
-                    )
-                if self.costs is None:
-                    _obj = first_n(objectives, self.metrics)
-                else:
-                    _obj = mix_n(objectives, self.metrics, self.costs)
-            case _, _:
-                raise RuntimeError(
-                    f"Unexpected case with {objectives=}, {multi_objective_generation=}",
-                )
-
-        _cost: tuple[str, Measure] | Mapping[str, Measure] | None
-        match costs:
-            case int() if costs < 0:
-                raise ValueError(f"{costs=} must be >= 0")
-            case 0:
-                _cost = None
-            case 1:
-                if self.costs is None:
-                    raise ValueError(
-                        f"Benchmark {self.name} has no costs but {costs=} was requested",
-                    )
-                _cost = first(self.costs)
-            case int():
-                if self.costs is None:
-                    raise ValueError(
-                        f"Benchmark {self.name} has no costs but {costs=} was requested",
-                    )
-                _cost = first_n(costs, self.costs)
-            case _:
-                raise TypeError(f"{costs=} not supported")
-
-        _budget: BudgetType
-        match budget:
-            case int() if budget < 0:
-                raise ValueError(f"{budget=} must be >= 0")
-            case int():
-                _budget = TrialBudget(budget)
-            case TrialBudget():
-                _budget = budget
-            case CostBudget():
-                raise NotImplementedError("Cost budgets are not yet supported")
-            case _:
-                raise TypeError(f"Unexpected type for `{budget=}`: {type(budget)}")
-
-        return Problem(
-            benchmark=self,
-            budget=_budget,
-            fidelity=_fid,
-            objective=_obj,
-            cost=_cost,
-            precision=precision
-        )
 
 
 @dataclass(kw_only=True)
