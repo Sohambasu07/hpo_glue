@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
-from functools import partial
 from typing import TYPE_CHECKING
 
 import numpy as np
 from ConfigSpace import ConfigurationSpace, Float
 
-from hpo_glue.benchmark import BenchmarkDescription, SurrogateBenchmark
-from hpo_glue.env import Env
+from hpo_glue.benchmark import FunctionalBenchmark
 from hpo_glue.measure import Measure
 from hpo_glue.result import Result
 
@@ -16,43 +13,18 @@ if TYPE_CHECKING:
 
     from hpo_glue.query import Query
 
-def branin_desc() -> Iterator[BenchmarkDescription]:
-
-    env = Env(
-        name="branin",
-        python_version="3.10",
-        requirements=(),
-        post_install=(),
-    )
-    name = "branin"
-    yield BenchmarkDescription(
-        name=name,
-        load=partial(_branin_surrogate),
-        costs=None,
-        fidelities=None,
-        metrics={
-            "value": Measure.metric((0.0, np.inf), minimize=True),
-        },
-        has_conditionals=False,
-        is_tabular=False,
-        env=env,
-        mem_req_mb = 100,
-    )
-
-
-def _branin_surrogate(
-    description: BenchmarkDescription
-) -> SurrogateBenchmark:
+def branin_bench() -> FunctionalBenchmark:
     branin_space = ConfigurationSpace()
     for i in range(2):
         branin_space.add(Float(name=f"x{i}", bounds=[-32.768, 32.768]))
-    return SurrogateBenchmark(
-        desc=description,
-        benchmark=branin,
+    return FunctionalBenchmark(
+        name="branin2",
         config_space=branin_space,
-        query=partial(branin),
+        metrics={
+            "value": Measure.metric((0.397887, np.inf), minimize=True),
+        },
+        query=branin,
     )
-
 
 def branin(query: Query) -> Result:
 
