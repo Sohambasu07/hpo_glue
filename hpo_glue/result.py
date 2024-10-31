@@ -53,11 +53,18 @@ class Result:
         """The config."""
         return self.query.config
 
-    def to_dict(self) -> dict[str, Any]:
+    def _to_dict(self) -> dict[str, Any]:
         """Convert the result to a dictionary."""
         members = [
             attr for attr in dir(self)
             if not callable(getattr(self, attr)) and not attr.startswith("__")
         ]
+        members.remove("query")
+        members.remove("config")
+        members.remove("trajectory")
 
-        return {attr: getattr(self, attr) for attr in members}
+        _self_dict = {attr: getattr(self, attr) for attr in members}
+        _self_dict.update(self.query._to_dict())
+        _self_dict["result_values"] = _self_dict.pop("values")
+
+        return _self_dict
