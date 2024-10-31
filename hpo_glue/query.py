@@ -66,3 +66,10 @@ class Query:
     ) -> Query:
         """Create a new query with a different fidelity."""
         return replace(self, fidelity=fidelity)
+
+    def _to_dict(self) -> dict[str, Any]:
+        return {
+            "config_id": self.config_id,
+            "config": self.config.values,
+            "fidelity": self.fidelity,
+        }
