@@ -14,12 +14,14 @@ from tqdm import TqdmWarning, tqdm
 
 from hpo_glue.budget import CostBudget, TrialBudget
 from hpo_glue.fidelity import Fidelity
+
+if TYPE_CHECKING:
+    from hpo_glue.problem import Problem
 from hpo_glue.utils import rescale
 
 if TYPE_CHECKING:
     from hpo_glue.benchmark import Benchmark
     from hpo_glue.optimizer import Optimizer
-    from hpo_glue.problem import Problem
     from hpo_glue.result import Result
 
 logger = logging.getLogger(__name__)
@@ -124,10 +126,15 @@ def _run(
             raise RuntimeError(f"Invalid budget type: {problem.budget}")
 
     logger.info(f"COMPLETED running {run_name}")
-    return result_df
+    return result_df.assign(
+        seed=seed,
+        optimizer=problem.optimizer.name,
+        optimizer_hps=problem.optimizer_hyperparameters,
+        benchmark=problem.benchmark.name
+    )
 
 
-def _run_problem_with_trial_budget(  # noqa: C901, PLR0912, PLR0915
+def _run_problem_with_trial_budget(  # noqa: C901, PLR0912
     *,
     run_name: str,
     optimizer: Optimizer,
@@ -224,7 +231,7 @@ def _run_problem_with_trial_budget(  # noqa: C901, PLR0912, PLR0915
                             raise NotImplementedError("Continue not yet implemented!") from e
                         case _:
                             raise RuntimeError(f"Invalid value for `on_error`: {on_error}") from e
-    return pd.DataFrame([res.to_dict() for res in history])
+    return pd.DataFrame([res._to_dict() for res in history])
 
 
 def _trial_budget_cost(
