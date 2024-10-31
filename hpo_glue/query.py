@@ -40,7 +40,10 @@ class Query:
             case (name, value):
                 self.query_id = f"{self.config.config_id}-{name}={value}"
             case Mapping():
-                self.query_id = f"{self.config.config_id}-{'-'.join(f'{k}={v}' for k, v in self.fidelity.items())}"
+                self.query_id = (
+                    f"{self.config.config_id}-"
+                    f"{'-'.join(f'{k}={v}' for k, v in self.fidelity.items())}"
+                )
             case _:
                 raise NotImplementedError("Unexpected fidelity type")
 

@@ -445,6 +445,7 @@ class FunctionalBenchmark:
 
     @property
     def description(self) -> BenchmarkDescription:
+        """Return the BenchmarkDescription of a FunctionalBenchmark."""
         return self.desc
 
 
@@ -452,6 +453,7 @@ class FunctionalBenchmark:
         self,
         desc: BenchmarkDescription,  # noqa: ARG002
     ) -> FunctionalBenchmark:
+        """Load the FunctionalBenchmark."""
         return self
 
 
@@ -463,6 +465,7 @@ class FunctionalBenchmark:
         frm: int | float | None = None,
         to: int | float | None = None,
     ) -> pd.DataFrame:
+        """The trajectory function for the benchmark, if one exists."""
         if self.trajectory_f is not None:
             return self.trajectory_f(query=query, frm=frm, to=to)
 
