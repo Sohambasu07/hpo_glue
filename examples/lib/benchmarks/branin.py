@@ -18,7 +18,7 @@ def branin_bench() -> FunctionalBenchmark:
     for i in range(2):
         branin_space.add(Float(name=f"x{i}", bounds=[-32.768, 32.768]))
     return FunctionalBenchmark(
-        name="branin2",
+        name="branin",
         config_space=branin_space,
         metrics={
             "value": Measure.metric((0.397887, np.inf), minimize=True),

@@ -18,7 +18,7 @@ def ackley_bench() -> FunctionalBenchmark:
     for i in range(2):
         ackley_space.add(Float(name=f"x{i}", bounds=[-32.768, 32.768]))
     return FunctionalBenchmark(
-        name="ackley2",
+        name="ackley",
         config_space=ackley_space,
         metrics={
             "value": Measure.metric((0.0, np.inf), minimize=True),
