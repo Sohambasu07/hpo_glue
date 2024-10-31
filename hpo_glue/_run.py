@@ -84,23 +84,22 @@ class Runtime_hist:
 
 
 def _run(
-    run_name: str,
-    optimizer: Optimizer,
-    optimizer_hyperparameters: dict[str, int | float],
     problem: Problem,
     seed: int,
     *,
+    run_name: str | None = None,
     on_error: Literal["raise", "continue"] = "raise",
     progress_bar: bool = False,
     continuations: bool = False
 ) -> pd.DataFrame:
+    run_name = run_name if run_name is not None else problem.name
     benchmark = problem.benchmark.load(problem.benchmark)
-    opt = optimizer(
+    opt = problem.optimizer(
         problem=problem,
         working_directory=Path("./Optimizers_cache"),
         seed=seed,
         config_space=benchmark.config_space,
-        **optimizer_hyperparameters,
+        **problem.optimizer_hyperparameters,
     )
 
     match problem.budget:

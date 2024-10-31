@@ -5,7 +5,9 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from itertools import product
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar
+
+from more_itertools import roundrobin, take
 
 from hpo_glue.budget import CostBudget, TrialBudget
 from hpo_glue.config import Config
@@ -19,11 +21,25 @@ from hpo_glue.result import Result
 if TYPE_CHECKING:
     from hpo_glue.benchmark import BenchmarkDescription
     from hpo_glue.budget import BudgetType
-    from hpo_glue.run import Run
 
 logger = logging.getLogger(__name__)
 
 OptWithHps: TypeAlias = tuple[type[Optimizer], Mapping[str, Any]]
+
+
+T = TypeVar("T")
+
+
+def first(_d: Mapping[str, T]) -> tuple[str, T]:
+    return next(iter(_d.items()))
+
+
+def first_n(n: int, _d: Mapping[str, T]) -> dict[str, T]:
+    return dict(take(n, _d.items()))
+
+
+def mix_n(n: int, _d1: Mapping[str, T], _d2: Mapping[str, T]) -> dict[str, T]:
+    return dict(take(n, roundrobin(_d1.items(), _d2.items())))
 
 
 @dataclass(kw_only=True, unsafe_hash=True)
@@ -70,8 +86,14 @@ class Problem:
     budget: BudgetType
     """The type of budget to use for the optimizer."""
 
+    optimizer: type[Optimizer] | OptWithHps
+    """The optimizer to use for this problem"""
+
+    optimizer_hyperparameters: Mapping[str, int | float] = field(default_factory=dict)
+    """The hyperparameters to use for the optimizer"""
+
     benchmark: BenchmarkDescription
-    """The benchmark to use for this problem statement"""
+    """The benchmark to use for this problem"""
 
     is_tabular: bool = field(init=False)
     """Whether the benchmark is tabular"""
@@ -89,9 +111,9 @@ class Problem:
     """Whether the problem setup allows for trajectories to be queried."""
 
     name: str = field(init=False)
-    """The name of the problem statement.
+    """The name of the problem.
 
-    This is used to identify the problem statement.
+    This is used to identify the problem.
     """
 
     precision: int = field(default=12) #TODO: Set default
@@ -106,6 +128,7 @@ class Problem:
         self.supports_trajectory: bool
 
         name_parts: list[str] = [
+            f"optimizer={self.optimizer.name}",
             f"benchmark={self.benchmark.name}",
             self.budget.path_str,
         ]
@@ -162,69 +185,221 @@ class Problem:
 
         self.name = ".".join(name_parts)
 
-    def generate_runs(
-        self,
-        optimizers: (
-            type[Optimizer]
-            | OptWithHps
-            | list[type[Optimizer]]
-            | list[OptWithHps | type[Optimizer]]
-        ),
-        *,
-        expdir: Path | str = DEFAULT_RELATIVE_EXP_DIR,
-        seeds: Iterable[int],
-        continuations: bool = False
-    ) -> list[Run]:
-        """Generate a set of problems for the given optimizer and benchmark.
 
-        If there is some incompatibility between the optimizer, the benchmark and the requested
-        amount of objectives, fidelities or costs, a ValueError will be raised.
+    @classmethod
+    def problem(  # noqa: C901, PLR0912
+        cls,
+        *,
+        optimizer: type[Optimizer] | OptWithHps,
+        optimizer_hyperparameters: Mapping[str, int | float] = {},
+        benchmark: BenchmarkDescription,
+        budget: BudgetType | int,
+        fidelities: int = 0,
+        objectives: int = 1,
+        costs: int = 0,
+        multi_objective_generation: Literal["mix_metric_cost", "metric_only"] = "mix_metric_cost",
+        precision: int | None = None
+    ) -> Problem:
+        """Generate a problem for this optimizer and benchmark.
 
         Args:
-            optimizers: The optimizer class to generate problems for.
-                Can provide a single optimizer or a list of optimizers.
-                If you wish to provide hyperparameters for the optimizer, provide a tuple with the
-                optimizer.
-            expdir: Which directory to store experiment results into.
-            seeds: The seed or seeds to use for the problems.
-
-        Returns:
-            An experiment object with the generated problems.
+            optimizer: The optimizer to use for the problem.
+            optimizer_hyperparameters: The hyperparameters to use for the optimizer.
+            benchmark: The benchmark to use for the problem.
+            budget: The budget to use for the problems. Budget defaults to a n_trials budget
+                where when multifidelty is enabled, fractional budget can be used and 1 is
+                equivalent a full fidelity trial.
+            fidelities: The number of fidelities for the problem.
+            objectives: The number of objectives for the problem.
+            costs: The number of costs for the problem.
+            multi_objective_generation: The method to generate multiple objectives.
         """
-        from hpo_glue.run import Run
+        _fid: tuple[str, Fidelity] | Mapping[str, Fidelity] | None
+        match fidelities:
+            case int() if fidelities < 0:
+                raise ValueError(f"{fidelities=} must be >= 0")
+            case 0:
+                _fid = None
+            case 1:
+                if benchmark.fidelities is None:
+                    raise ValueError(
+                        (
+                            f"Benchmark {benchmark.name} has no fidelities but {fidelities=} "
+                            "was requested"
+                        ),
+                    )
+                _fid = first(benchmark.fidelities)
+            case int():
+                if benchmark.fidelities is None:
+                    raise ValueError(
+                        (
+                            f"Benchmark {benchmark.name} has no fidelities but {fidelities=} "
+                            "was requested"
+                        ),
+                    )
 
-        _seeds = seeds
-        # if not isinstance(seeds, Iterable):
-        #     _seeds = [seeds]
-        _optimizers: list[OptWithHps]
-        match optimizers:
-            case tuple():
-                _opt, hps = optimizers
-                _optimizers = [(_opt, hps)]
-            case list():
-                _optimizers = [o if isinstance(o, tuple) else (o, {}) for o in optimizers]
+                if fidelities > len(benchmark.fidelities):
+                    raise ValueError(
+                        f"{fidelities=} is greater than the number of fidelities"
+                        f" in benchmark {benchmark.name} which has "
+                        f"{len(benchmark.fidelities)} fidelities",
+                    )
+
+                _fid = first_n(fidelities, benchmark.fidelities)
             case _:
-                _optimizers = [(optimizers, {})]
+                raise TypeError(f"{fidelities=} not supported")
 
-        for opt, _ in _optimizers:
-            support: Problem.Support = opt.support
-            support.check_opt_support(who=opt.name, problem=self)
-
-        _runs_list = []
-        for _seed, (opt, hps) in product(_seeds, _optimizers):
-            if "single" not in opt.support.fidelities:
-                continuations = False
-            _runs_list.append(
-                Run(
-                problem=self,
-                optimizer=opt,
-                optimizer_hyperparameters=hps,
-                seed=_seed,
-                expdir=Path(expdir),
-                continuations=continuations
+        _obj: tuple[str, Measure] | Mapping[str, Measure]
+        match objectives, multi_objective_generation:
+            # single objective
+            case int(), _ if objectives < 0:
+                raise ValueError(f"{objectives=} must be >= 0")
+            case _, str() if multi_objective_generation not in {"mix_metric_cost", "metric_only"}:
+                raise ValueError(
+                    f"{multi_objective_generation=} not supported, must be one"
+                    " of 'mix_metric_cost', 'metric_only'",
                 )
-            )
-        return _runs_list
+            case 1, _:
+                _obj = first(benchmark.metrics)
+            case _, "metric_only":
+                if objectives > len(benchmark.metrics):
+                    raise ValueError(
+                        f"{objectives=} is greater than the number of metrics"
+                        f" in benchmark {benchmark.name} which has {len(benchmark.metrics)} metrics",
+                    )
+                _obj = first_n(objectives, benchmark.metrics)
+            case _, "mix_metric_cost":
+                n_costs = 0 if benchmark.costs is None else len(benchmark.costs)
+                n_available = len(benchmark.metrics) + n_costs
+                if objectives > n_available:
+                    raise ValueError(
+                        f"{objectives=} is greater than the number of metrics and costs"
+                        f" in benchmark {benchmark.name} which has {n_available} objectives"
+                        " when combining metrics and costs",
+                    )
+                if benchmark.costs is None:
+                    _obj = first_n(objectives, benchmark.metrics)
+                else:
+                    _obj = mix_n(objectives, benchmark.metrics, benchmark.costs)
+            case _, _:
+                raise RuntimeError(
+                    f"Unexpected case with {objectives=}, {multi_objective_generation=}",
+                )
+
+        _cost: tuple[str, Measure] | Mapping[str, Measure] | None
+        match costs:
+            case int() if costs < 0:
+                raise ValueError(f"{costs=} must be >= 0")
+            case 0:
+                _cost = None
+            case 1:
+                if benchmark.costs is None:
+                    raise ValueError(
+                        f"Benchmark {benchmark.name} has no costs but {costs=} was requested",
+                    )
+                _cost = first(benchmark.costs)
+            case int():
+                if benchmark.costs is None:
+                    raise ValueError(
+                        f"Benchmark {benchmark.name} has no costs but {costs=} was requested",
+                    )
+                _cost = first_n(costs, benchmark.costs)
+            case _:
+                raise TypeError(f"{costs=} not supported")
+
+        _budget: BudgetType
+        match budget:
+            case int() if budget < 0:
+                raise ValueError(f"{budget=} must be >= 0")
+            case int():
+                _budget = TrialBudget(budget)
+            case TrialBudget():
+                _budget = budget
+            case CostBudget():
+                raise NotImplementedError("Cost budgets are not yet supported")
+            case _:
+                raise TypeError(f"Unexpected type for `{budget=}`: {type(budget)}")
+
+        problem = Problem(
+            optimizer=optimizer,
+            optimizer_hyperparameters=optimizer_hyperparameters,
+            benchmark=benchmark,
+            budget=_budget,
+            fidelity=_fid,
+            objective=_obj,
+            cost=_cost,
+            precision=precision
+        )
+
+        support: Problem.Support = optimizer.support
+        support.check_opt_support(who=optimizer.name, problem=problem)
+
+        return problem
+
+
+    # def generate_runs(
+    #     self,
+    #     optimizers: (
+    #         type[Optimizer]
+    #         | OptWithHps
+    #         | list[type[Optimizer]]
+    #         | list[OptWithHps | type[Optimizer]]
+    #     ),
+    #     *,
+    #     expdir: Path | str = DEFAULT_RELATIVE_EXP_DIR,
+    #     seeds: Iterable[int],
+    #     continuations: bool = False
+    # ) -> list[Run]:
+    #     """Generate a set of problems for the given optimizer and benchmark.
+
+    #     If there is some incompatibility between the optimizer, the benchmark and the requested
+    #     amount of objectives, fidelities or costs, a ValueError will be raised.
+
+    #     Args:
+    #         optimizers: The optimizer class to generate problems for.
+    #             Can provide a single optimizer or a list of optimizers.
+    #             If you wish to provide hyperparameters for the optimizer, provide a tuple with the
+    #             optimizer.
+    #         expdir: Which directory to store experiment results into.
+    #         seeds: The seed or seeds to use for the problems.
+
+    #     Returns:
+    #         An experiment object with the generated problems.
+    #     """
+    #     from hpo_glue.run import Run
+
+    #     _seeds = seeds
+    #     # if not isinstance(seeds, Iterable):
+    #     #     _seeds = [seeds]
+    #     _optimizers: list[OptWithHps]
+    #     match optimizers:
+    #         case tuple():
+    #             _opt, hps = optimizers
+    #             _optimizers = [(_opt, hps)]
+    #         case list():
+    #             _optimizers = [o if isinstance(o, tuple) else (o, {}) for o in optimizers]
+    #         case _:
+    #             _optimizers = [(optimizers, {})]
+
+    #     for opt, _ in _optimizers:
+    #         support: Problem.Support = opt.support
+    #         support.check_opt_support(who=opt.name, problem=self)
+
+    #     _runs_list = []
+    #     for _seed, (opt, hps) in product(_seeds, _optimizers):
+    #         if "single" not in opt.support.fidelities:
+    #             continuations = False
+    #         _runs_list.append(
+    #             Run(
+    #             problem=self,
+    #             optimizer=opt,
+    #             optimizer_hyperparameters=hps,
+    #             seed=_seed,
+    #             expdir=Path(expdir),
+    #             continuations=continuations
+    #             )
+    #         )
+    #     return _runs_list
 
     def group_for_optimizer_comparison(
         self,
