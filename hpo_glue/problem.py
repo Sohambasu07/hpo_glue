@@ -1,17 +1,14 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from itertools import product
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar
 
 from more_itertools import roundrobin, take
 
 from hpo_glue.budget import CostBudget, TrialBudget
 from hpo_glue.config import Config
-from hpo_glue.constants import DEFAULT_RELATIVE_EXP_DIR
 from hpo_glue.fidelity import Fidelity, ListFidelity, RangeFidelity
 from hpo_glue.measure import Measure
 from hpo_glue.optimizer import Optimizer
@@ -336,70 +333,6 @@ class Problem:
 
         return problem
 
-
-    # def generate_runs(
-    #     self,
-    #     optimizers: (
-    #         type[Optimizer]
-    #         | OptWithHps
-    #         | list[type[Optimizer]]
-    #         | list[OptWithHps | type[Optimizer]]
-    #     ),
-    #     *,
-    #     expdir: Path | str = DEFAULT_RELATIVE_EXP_DIR,
-    #     seeds: Iterable[int],
-    #     continuations: bool = False
-    # ) -> list[Run]:
-    #     """Generate a set of problems for the given optimizer and benchmark.
-
-    #     If there is some incompatibility between the optimizer, the benchmark and the requested
-    #     amount of objectives, fidelities or costs, a ValueError will be raised.
-
-    #     Args:
-    #         optimizers: The optimizer class to generate problems for.
-    #             Can provide a single optimizer or a list of optimizers.
-    #             If you wish to provide hyperparameters for the optimizer, provide a tuple with the
-    #             optimizer.
-    #         expdir: Which directory to store experiment results into.
-    #         seeds: The seed or seeds to use for the problems.
-
-    #     Returns:
-    #         An experiment object with the generated problems.
-    #     """
-    #     from hpo_glue.run import Run
-
-    #     _seeds = seeds
-    #     # if not isinstance(seeds, Iterable):
-    #     #     _seeds = [seeds]
-    #     _optimizers: list[OptWithHps]
-    #     match optimizers:
-    #         case tuple():
-    #             _opt, hps = optimizers
-    #             _optimizers = [(_opt, hps)]
-    #         case list():
-    #             _optimizers = [o if isinstance(o, tuple) else (o, {}) for o in optimizers]
-    #         case _:
-    #             _optimizers = [(optimizers, {})]
-
-    #     for opt, _ in _optimizers:
-    #         support: Problem.Support = opt.support
-    #         support.check_opt_support(who=opt.name, problem=self)
-
-    #     _runs_list = []
-    #     for _seed, (opt, hps) in product(_seeds, _optimizers):
-    #         if "single" not in opt.support.fidelities:
-    #             continuations = False
-    #         _runs_list.append(
-    #             Run(
-    #             problem=self,
-    #             optimizer=opt,
-    #             optimizer_hyperparameters=hps,
-    #             seed=_seed,
-    #             expdir=Path(expdir),
-    #             continuations=continuations
-    #             )
-    #         )
-    #     return _runs_list
 
     def group_for_optimizer_comparison(
         self,
